@@ -5,8 +5,9 @@ import AppShell from '@/components/AppShell/AppShell';
 import Navbar from '@/components/Navbar/Navbar';
 import TreeCanvas from '@/components/TreeCanvas/TreeCanvas';
 import FamilyChartTree from '@/components/FamilyChartTree/FamilyChartTree';
-import type { FamilyChartOrientation } from '@/components/FamilyChartTree/FamilyChartTree';
+import type { FamilyChartOrientation, FamilyChartTreeHandle } from '@/components/FamilyChartTree/FamilyChartTree';
 import CanvasToolbar from '@/components/CanvasToolbar/CanvasToolbar';
+import DisplayModeBar from '@/components/DisplayModeBar/DisplayModeBar';
 import CanvasLegend from '@/components/CanvasLegend/CanvasLegend';
 import ContextMenu from '@/components/ContextMenu/ContextMenu';
 import DetailPanel from '@/components/DetailPanel/DetailPanel';
@@ -44,6 +45,9 @@ const TreePage: React.FC<TreePageProps> = ({ renderer = 'family-chart' }) => {
   const { refetch } = useTreeData();
   const [treeFilter, setTreeFilter] = useState<TreeFilter>('all');
   const [treeIssueCount, setTreeIssueCount] = useState<number | null>(null);
+  const [displayMode, setDisplayMode] = useState(false);
+  const pageContainerRef = useRef<HTMLDivElement>(null);
+  const familyChartRef = useRef<FamilyChartTreeHandle>(null);
   const {
     selectedPersonId,
     setHighlightedPersonIds,
@@ -59,7 +63,10 @@ const TreePage: React.FC<TreePageProps> = ({ renderer = 'family-chart' }) => {
   const { user } = useAuth();
   const [orientation, setOrientation] = useState<FamilyChartOrientation>('vertical');
   const [chartDepth, setChartDepth] = useState(3);
-  const { nodes, families, isLoading, setNodes, setFamilies, setConnectors, setLoading, fitToScreen } = useCanvasStore();
+  const {
+    nodes, families, isLoading, setNodes, setFamilies, setConnectors, setLoading, fitToScreen,
+    zoom, zoomIn, zoomOut, generations,
+  } = useCanvasStore();
   const searchFilters = useSearchStore();
   const setTotalCount = useSearchStore((s) => s.setTotalCount);
   const filtersActive = hasActiveFilters(searchFilters);
@@ -399,23 +406,68 @@ const TreePage: React.FC<TreePageProps> = ({ renderer = 'family-chart' }) => {
     [homePersonId, setHomePersonId],
   );
 
+  const enterDisplayMode = useCallback(() => {
+    pageContainerRef.current?.requestFullscreen?.().catch(() => {});
+    setDisplayMode(true);
+  }, []);
+
+  const exitDisplayMode = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    setDisplayMode(false);
+  }, []);
+
+  // Pressing Esc exits fullscreen itself; this keeps the chrome-hiding state
+  // in sync whenever fullscreen ends, however it ends.
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) setDisplayMode(false);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
   const wizardTitle = 'Add Person';
 
   return (
+    <div ref={pageContainerRef} className={styles.displayModeContainer}>
     <AppShell
       navbar={<Navbar />}
       detail={<DetailPanel onEditPerson={openPersonEditor} />}
       showDetail={selectedPersonId !== null}
       context="tree"
+      minimal={displayMode}
     >
-      <CanvasToolbar
-        onAddPerson={openCreateWizard}
-        treeFilter={treeFilter}
-        onTreeFilterChange={setTreeFilter}
-        treeIssueCount={treeIssueCount}
-        showGenerations={renderer === 'classic'}
-        onGoHome={goHome}
-      />
+      {displayMode ? (
+        renderer === 'classic' ? (
+          <DisplayModeBar
+            depth={generations}
+            onDepthChange={setGenerations}
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+            zoomLabel={`${Math.round(zoom * 100)}%`}
+            onExit={exitDisplayMode}
+          />
+        ) : (
+          <DisplayModeBar
+            depth={chartDepth}
+            onDepthChange={changeDepth}
+            depthOptions={[1, 2, 3, 4, 5, 10]}
+            onZoomIn={() => familyChartRef.current?.zoomIn()}
+            onZoomOut={() => familyChartRef.current?.zoomOut()}
+            onExit={exitDisplayMode}
+          />
+        )
+      ) : (
+        <CanvasToolbar
+          onAddPerson={openCreateWizard}
+          treeFilter={treeFilter}
+          onTreeFilterChange={setTreeFilter}
+          treeIssueCount={treeIssueCount}
+          showGenerations={renderer === 'classic'}
+          onGoHome={goHome}
+          onEnterDisplayMode={enterDisplayMode}
+        />
+      )}
       {treeFilter !== 'all' && (
         <div className={styles.filterBanner}>
           <span className={styles.filterBannerLabel}>
@@ -443,28 +495,31 @@ const TreePage: React.FC<TreePageProps> = ({ renderer = 'family-chart' }) => {
         </>
       ) : (
         <>
-          <div className={styles.chartControls}>
-            <label>
-              Layout
-              <select
-                value={orientation}
-                onChange={(e) => setOrientation(e.target.value as FamilyChartOrientation)}
-              >
-                <option value="vertical">Vertical</option>
-                <option value="horizontal">Horizontal</option>
-              </select>
-            </label>
-            <label>
-              Depth
-              <select value={chartDepth} onChange={(e) => changeDepth(Number(e.target.value))}>
-                {[1, 2, 3, 4, 5, 10].map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-            </label>
-          </div>
+          {!displayMode && (
+            <div className={styles.chartControls}>
+              <label>
+                Layout
+                <select
+                  value={orientation}
+                  onChange={(e) => setOrientation(e.target.value as FamilyChartOrientation)}
+                >
+                  <option value="vertical">Vertical</option>
+                  <option value="horizontal">Horizontal</option>
+                </select>
+              </label>
+              <label>
+                Depth
+                <select value={chartDepth} onChange={(e) => changeDepth(Number(e.target.value))}>
+                  {[1, 2, 3, 4, 5, 10].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
           {chartPersons.length > 0 && chartMainId && (
             <FamilyChartTree
+              ref={familyChartRef}
               persons={chartPersons}
               families={families}
               mainPersonId={chartMainId}
@@ -521,6 +576,7 @@ const TreePage: React.FC<TreePageProps> = ({ renderer = 'family-chart' }) => {
         {renderStep()}
       </WizardModal>
     </AppShell>
+    </div>
   );
 };
 

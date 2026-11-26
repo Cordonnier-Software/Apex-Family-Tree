@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { createChart } from 'family-chart';
+import React, { useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import { createChart, handlers } from 'family-chart';
 import type { Datum } from 'family-chart';
 import 'family-chart/styles/family-chart.css';
 import type { TreeFamily, TreePerson } from '@/stores/canvasStore';
@@ -7,6 +7,13 @@ import { toFamilyChartData } from '@/utils/familyChartAdapter';
 import styles from './FamilyChartTree.module.css';
 
 export type FamilyChartOrientation = 'vertical' | 'horizontal';
+
+/** Imperative zoom controls, for hosts (like the display-mode bar) that need
+ * zoom buttons outside the chart's own pinch/wheel handling. */
+export interface FamilyChartTreeHandle {
+  zoomIn: () => void;
+  zoomOut: () => void;
+}
 
 interface FamilyChartTreeProps {
   persons: TreePerson[];
@@ -54,7 +61,7 @@ function personIdFromNode(target: EventTarget | null, known: Set<string>): strin
  * on one "main" person; clicking another card re-centres on that person.
  * Pan/zoom and card rendering are handled by the library (HTML cards).
  */
-const FamilyChartTree: React.FC<FamilyChartTreeProps> = ({
+const FamilyChartTree = React.forwardRef<FamilyChartTreeHandle, FamilyChartTreeProps>(({
   persons,
   families,
   mainPersonId,
@@ -65,7 +72,7 @@ const FamilyChartTree: React.FC<FamilyChartTreeProps> = ({
   onPersonContextMenu,
   onPersonOpen,
   onPersonSelect,
-}) => {
+}, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const changeRef = useRef(onMainChange);
   changeRef.current = onMainChange;
@@ -75,6 +82,17 @@ const FamilyChartTree: React.FC<FamilyChartTreeProps> = ({
   handlersRef.current = { onPersonContextMenu, onPersonOpen, onPersonSelect };
 
   const data = useMemo(() => toFamilyChartData(persons, families), [persons, families]);
+
+  useImperativeHandle(ref, () => ({
+    zoomIn: () => {
+      const svg = containerRef.current?.querySelector('svg.main_svg');
+      if (svg) handlers.manualZoom({ amount: 1.25, svg: svg as SVGElement, transition_time: 200 });
+    },
+    zoomOut: () => {
+      const svg = containerRef.current?.querySelector('svg.main_svg');
+      if (svg) handlers.manualZoom({ amount: 0.8, svg: svg as SVGElement, transition_time: 200 });
+    },
+  }), []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -154,6 +172,8 @@ const FamilyChartTree: React.FC<FamilyChartTreeProps> = ({
   }, [data]);
 
   return <div ref={containerRef} className={`f3 ${styles.chart}`} />;
-};
+});
+
+FamilyChartTree.displayName = 'FamilyChartTree';
 
 export default FamilyChartTree;

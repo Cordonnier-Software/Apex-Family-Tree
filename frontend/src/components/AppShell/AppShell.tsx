@@ -10,6 +10,9 @@ interface AppShellProps {
   showDetail?: boolean;
   /** Current page context — used for context-aware StatusBar */
   context?: SidebarContext;
+  /** Hides the navbar, sidebar, status bar and detail panel, leaving only
+   * the page's own content — used for tree display mode. */
+  minimal?: boolean;
   children: React.ReactNode;
 }
 
@@ -19,24 +22,27 @@ const AppShell: React.FC<AppShellProps> = ({
   detail,
   showDetail = false,
   context,
+  minimal = false,
   children,
 }) => {
   return (
     <div className={styles.shell}>
-      {navbar}
+      {!minimal && navbar}
       <div className={styles.body}>
-        {sidebar}
+        {!minimal && sidebar}
         <div className={styles.mainWrapper}>
           <main className={styles.main}>{children}</main>
-          <StatusBar context={context} />
+          {!minimal && <StatusBar context={context} />}
         </div>
-        <div
-          className={
-            showDetail && detail ? styles.detailPanel : styles.detailPanelHidden
-          }
-        >
-          {detail}
-        </div>
+        {!minimal && (
+          <div
+            className={
+              showDetail && detail ? styles.detailPanel : styles.detailPanelHidden
+            }
+          >
+            {detail}
+          </div>
+        )}
       </div>
     </div>
   );

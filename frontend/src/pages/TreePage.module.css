@@ -1,3 +1,7 @@
+.displayModeContainer {
+  height: 100%;
+}
+
 .filterBanner {
   position: absolute;
   top: calc(var(--space-3) + 52px); /* below the toolbar */

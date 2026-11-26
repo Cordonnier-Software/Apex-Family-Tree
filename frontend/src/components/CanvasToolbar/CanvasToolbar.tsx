@@ -18,9 +18,11 @@ interface CanvasToolbarProps {
    * where home used to be in a layout built around somebody else.
    */
   onGoHome?: () => void;
+  /** Enter tree display mode — fullscreen, chrome hidden. */
+  onEnterDisplayMode?: () => void;
 }
 
-const CanvasToolbar: React.FC<CanvasToolbarProps> = ({ onAddPerson, treeFilter = 'all', onTreeFilterChange, treeIssueCount, showGenerations = false, onGoHome }) => {
+const CanvasToolbar: React.FC<CanvasToolbarProps> = ({ onAddPerson, treeFilter = 'all', onTreeFilterChange, treeIssueCount, showGenerations = false, onGoHome, onEnterDisplayMode }) => {
   const navigate = useNavigate();
   const { zoom, zoomIn, zoomOut, resetView, fitToScreen, generations, setGenerations } = useCanvasStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -116,6 +118,20 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({ onAddPerson, treeFilter =
           />
           <span>{generations}</span>
         </label>
+      )}
+
+      {onEnterDisplayMode && (
+        <>
+          <div className={styles.separator} />
+          <button
+            className={styles.resetBtn}
+            onClick={onEnterDisplayMode}
+            aria-label="Display mode"
+            title="Display mode (fullscreen)"
+          >
+            ⛶
+          </button>
+        </>
       )}
 
       {typeof treeIssueCount === 'number' && treeIssueCount > 0 && (
