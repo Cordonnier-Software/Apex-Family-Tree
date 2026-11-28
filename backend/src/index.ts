@@ -81,11 +81,17 @@ async function start() {
     runMigrations(db, migrationsDir, logger);
 
     // Data backfills (idempotent — only process rows missing computed values)
-    const { backfillMarriageSortKeys, backfillFamilyLifecycleEvents } = await import('./db/backfill.js');
+    const { backfillMarriageSortKeys, backfillFamilyLifecycleEvents, backfillArtifactBridge } =
+      await import('./db/backfill.js');
     backfillMarriageSortKeys(db, logger);
     // After the sort keys, so an event created here inherits a date the
     // family already understands.
     backfillFamilyLifecycleEvents(db, logger);
+    // Repairs any media_items/person_media row a direct database write left
+    // without its artifact identity -- see backfillArtifactBridge's own
+    // comment. Cheap (indexed NOT EXISTS lookups), so it runs here rather
+    // than deferred like the thumbnail backfill below.
+    backfillArtifactBridge(logger);
 
     pruneExpiredTokens(logger);
 
