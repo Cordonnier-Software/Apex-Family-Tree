@@ -3,6 +3,7 @@ import { parseGedcomDate } from '../utils/gedcom-date.js';
 import type { Logger } from '../services/logger.js';
 import { runWithFlags } from '../services/requestContext.js';
 import { EventRepository } from '../repositories/EventRepository.js';
+import { MediaRepository } from '../repositories/MediaRepository.js';
 
 /**
  * Populate marriage_date_sort_key for families that have a raw marriage_date
@@ -91,4 +92,27 @@ export function backfillFamilyLifecycleEvents(db: Database.Database, logger: Log
   });
 
   logger.info('Family lifecycle event backfill complete');
+}
+
+/**
+ * Give any media_items/person_media row that arrived by a direct database
+ * write -- a bulk import script, a row restored from an old backup,
+ * anything that didn't go through MediaRepository.create()/linkToPerson() --
+ * the artifact identity and "appears in" relationship it would have gotten
+ * automatically. Without this, a person page shows a card for the file but
+ * clicking it 404s with "Artifact not found" -- the same gap 077 and 166
+ * bridged once already for scanned media specifically; this covers any
+ * source, on every boot, rather than waiting for the next one-off migration.
+ *
+ * Idempotent: MediaRepository.reconcileArtifactBridge() guards every write
+ * with NOT EXISTS.
+ */
+export function backfillArtifactBridge(logger: Logger): void {
+  const { artifactsBridged, appearsInConsidered } = new MediaRepository().reconcileArtifactBridge();
+  if (artifactsBridged === 0 && appearsInConsidered === 0) return;
+
+  logger.info(
+    `Artifact bridge backfill: ${artifactsBridged} media item(s) given an artifact identity, ` +
+      `${appearsInConsidered} appears-in relationship(s) considered`,
+  );
 }

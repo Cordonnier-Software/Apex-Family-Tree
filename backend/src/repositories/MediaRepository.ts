@@ -363,6 +363,57 @@ export class MediaRepository extends BaseRepository {
   }
 
   /**
+   * Give every media_items row that bypassed this repository the artifact
+   * identity, and every person_media link that bypassed it the "appears in"
+   * relationship, that syncArtifact()/syncAppearsIn() would have written had
+   * the row arrived through create()/linkToPerson() to begin with.
+   *
+   * A direct `INSERT INTO media_items` -- a bulk import script, a row
+   * restored from an old backup, anything that didn't go through this class
+   * -- reproduces the exact gap 077 and 166 found and bridged once already
+   * for scanned media specifically: a person page shows a card for the file,
+   * because the card is built from media_items directly, but it links to
+   * /artifacts/:id, which 404s with "Artifact not found" because nothing
+   * ever wrote that id into archive_objects.
+   *
+   * Called on every boot (see db/backfill.ts) rather than as a one-off
+   * migration, so the archive heals itself no matter how the row got there.
+   * Both passes are NOT EXISTS-guarded, so this is cheap and a no-op once
+   * nothing is missing.
+   */
+  reconcileArtifactBridge(): { artifactsBridged: number; appearsInConsidered: number } {
+    const run = this.db.transaction(() => {
+      const unbridged = this.db.prepare(
+        `SELECT id FROM media_items mi
+          WHERE NOT EXISTS (SELECT 1 FROM archive_objects ao WHERE ao.id = mi.id)`,
+      ).all() as { id: string }[];
+      for (const { id } of unbridged) this.syncArtifact(id);
+
+      // A person_media link made directly (rather than through
+      // linkToPerson()) never ran syncAppearsIn, which is also where the
+      // Artifacts tab's subject list comes from. syncAppearsIn no-ops on a
+      // media id that still has no artifact -- e.g. a dangling link to a
+      // media_items row that was itself deleted -- so this is a safe
+      // superset of what can actually be bridged, not a guarantee every
+      // row counted here gets a relationship.
+      const unlinked = this.db.prepare(
+        `SELECT pm.media_id, pm.person_id, pm.sort_order
+           FROM person_media pm
+          WHERE NOT EXISTS (
+            SELECT 1 FROM relationship_members rm
+             WHERE rm.relationship_id = 'rel_appears_in_media_' || pm.media_id
+               AND rm.object_id = pm.person_id AND rm.role = 'subject'
+          )`,
+      ).all() as { media_id: string; person_id: string; sort_order: number }[];
+      for (const link of unlinked) this.syncAppearsIn(link.media_id, link.person_id, link.sort_order);
+
+      return { artifactsBridged: unbridged.length, appearsInConsidered: unlinked.length };
+    });
+
+    return run();
+  }
+
+  /**
    * Give an existing, fileless artifact (one created by `POST /artifacts`,
    * which writes only archive_objects/artifacts) a media_items row under its
    * own id, and the matching artifact_files row the bridge convention
